@@ -4,8 +4,9 @@
 from __future__ import annotations
 
 import json
+import shutil
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Callable, Dict, List, Optional
 
 import numpy as np
 import pandas as pd
@@ -32,6 +33,11 @@ def run_backtest(
     noise_scale: float,
     noise_seed: int,
     joint_weight_config: Optional[Dict] = None,
+    target_wet_config: Optional[Dict] = None,
+    planner_fn: Optional[Callable[..., Dict]] = None,
+    output_prefix: str = "",
+    details_filename: Optional[str] = None,
+    summary_filename: Optional[str] = None,
 ) -> Dict:
     work = merged.sort_values("wet_time").reset_index(drop=True).copy()
     n_total = len(work)
@@ -47,6 +53,8 @@ def run_backtest(
     test_start = max(1, n_total - test_size)
     records: List[Dict] = []
     rng = np.random.default_rng(noise_seed)
+
+    planner = planner_fn or latest_scene_adjustment
 
     for i in range(test_start, n_total - 1):
         hist = work.iloc[: i + 1].copy()
@@ -76,13 +84,14 @@ def run_backtest(
             min_samples_joint=min_samples_joint,
             core_stable_tol=core_stable_tol,
         )
-        plan = latest_scene_adjustment(
+        plan = planner(
             hist,
             effects,
             joint_effects,
             deltas,
             core_stable_tol=core_stable_tol,
             joint_weight_config=joint_weight_config,
+            target_wet_config=target_wet_config,
         )
 
         current = hist.iloc[-1]
@@ -140,6 +149,11 @@ def run_backtest(
                 "current_wet_weight": current_wet,
                 "next_wet_weight": next_wet,
                 "target_wet_weight": float(plan.get("target_wet_weight", np.nan)),
+                "target_wet_stable": float(plan.get("target_wet_stable", np.nan)),
+                "target_wet_trend": float(plan.get("target_wet_trend", np.nan)),
+                "target_alpha": float(plan.get("target_alpha", np.nan)),
+                "target_recent_vol": float(plan.get("target_recent_vol", np.nan)),
+                "target_method": plan.get("target_method", ""),
                 "required_reduction": float(plan.get("required_reduction", 0.0)),
                 "expected_reduction": expected_reduction,
                 "noise_scope": noise_scope,
@@ -162,9 +176,22 @@ def run_backtest(
         )
 
     backtest_df = pd.DataFrame(records)
-    backtest_csv = output_dir / "backtest_last_10pct_details.csv"
+    details_name = details_filename or f"{output_prefix}backtest_last_10pct_details.csv"
+    summary_name = summary_filename or f"{output_prefix}backtest_last_10pct_summary.json"
+    backtest_csv = output_dir / details_name
     backtest_df.to_csv(backtest_csv, index=False, encoding="utf-8-sig")
     backtest_vis_paths = save_backtest_visualizations(backtest_df, output_dir)
+    if output_prefix:
+        renamed_paths: Dict[str, str] = {}
+        for key, raw_path in backtest_vis_paths.items():
+            src = Path(raw_path)
+            dst = src.with_name(f"{output_prefix}{src.name}")
+            if src.exists():
+                if dst.exists():
+                    dst.unlink()
+                shutil.move(str(src), str(dst))
+                renamed_paths[key] = str(dst)
+        backtest_vis_paths = renamed_paths
 
     actionable = backtest_df[backtest_df["has_recommendation"] == 1].copy() if not backtest_df.empty else pd.DataFrame()
     wet_metrics = {
@@ -215,7 +242,7 @@ def run_backtest(
         "visualizations": backtest_vis_paths,
     }
 
-    with open(output_dir / "backtest_last_10pct_summary.json", "w", encoding="utf-8") as f:
+    with open(output_dir / summary_name, "w", encoding="utf-8") as f:
         json.dump(summary, f, ensure_ascii=False, indent=2)
 
     return summary

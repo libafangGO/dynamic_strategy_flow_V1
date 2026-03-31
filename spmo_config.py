@@ -57,6 +57,27 @@ DEFAULT_SCENE_CONFIG = {
             "印刷高度偏移": 1.0,
             "刮刀高度偏移": 1.0,
         },
+        "dynamic_weight": {
+            "k": 8.0,
+            "lambda": 0.8,
+            "recent_window": 20,
+            "min_scene_samples": 8,
+            "eps": 1e-6,
+        },
+    },
+    "target_wet_config": {
+        "enabled_dual_target": True,
+        "recent_window": 80,
+        "stable_quantile": 0.35,
+        "trend_bottom_ratio": 0.20,
+        "trend_push_down": 0.02,
+        "vol_low": 0.15,
+        "vol_high": 0.50,
+        "alpha_low": 0.30,
+        "alpha_high": 0.70,
+        "min_recent_samples": 12,
+        "target_floor_quantile": 0.05,
+        "target_ceiling_quantile": 0.50,
     },
 }
 

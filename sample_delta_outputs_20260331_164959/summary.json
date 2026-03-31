@@ -1,0 +1,194 @@
+{
+  "timestamp": "2026-03-31 16:50:31",
+  "samples": 1011,
+  "coarse_scenes": 8,
+  "fine_scenes": 21,
+  "adjacent_pairs": 850,
+  "effect_rows": 14,
+  "joint_effect_rows": 11,
+  "coarse_scene_cols": [
+    "刮刀高度_上",
+    "刮刀高度_下",
+    "墨刀高度_上",
+    "墨刀高度_下"
+  ],
+  "core_params": [
+    "印刷压力",
+    "印刷高度偏移",
+    "刮刀高度偏移"
+  ],
+  "coarse_round_step": 0.5,
+  "life_bin_size": 200000,
+  "core_stable_tol": 0.1,
+  "scene_config": {
+    "coarse_scene": {
+      "features": [
+        "刮刀高度_上",
+        "刮刀高度_下",
+        "墨刀高度_上",
+        "墨刀高度_下"
+      ],
+      "method": "tree",
+      "fixed_round_step": 0.5,
+      "tree": {
+        "max_leaf_nodes": 10,
+        "min_samples_leaf": 20
+      }
+    },
+    "life_segment": {
+      "enabled": true,
+      "feature": "网版寿命",
+      "method": "tree",
+      "fixed_bin_size": 100000,
+      "tree": {
+        "max_leaf_nodes": 4,
+        "min_samples_leaf": 20
+      }
+    },
+    "joint_recommendation": {
+      "use_weighted_scale": true,
+      "weights": {
+        "印刷压力": 1.0,
+        "印刷高度偏移": 1.0,
+        "刮刀高度偏移": 1.0
+      },
+      "dynamic_weight": {
+        "k": 4.0,
+        "lambda": 0.4,
+        "recent_window": 20,
+        "min_scene_samples": 8,
+        "eps": 1e-06
+      }
+    },
+    "target_wet_config": {
+      "enabled_dual_target": true,
+      "recent_window": 80,
+      "stable_quantile": 0.25,
+      "trend_bottom_ratio": 0.2,
+      "trend_push_down": 0.08,
+      "vol_low": 0.15,
+      "vol_high": 0.5,
+      "alpha_low": 0.2,
+      "alpha_high": 0.55,
+      "min_recent_samples": 12,
+      "target_floor_quantile": 0.05,
+      "target_ceiling_quantile": 0.5
+    }
+  },
+  "joint_weight_config": {
+    "use_weighted_scale": true,
+    "weights": {
+      "印刷压力": 1.0,
+      "印刷高度偏移": 1.0,
+      "刮刀高度偏移": 1.0
+    },
+    "dynamic_weight": {
+      "k": 4.0,
+      "lambda": 0.4,
+      "recent_window": 20,
+      "min_scene_samples": 8,
+      "eps": 1e-06
+    }
+  },
+  "matched_samples_visualization": "D:\\4.正泰新能-银浆单耗\\dynamic_strategy_flow_V1\\sample_delta_outputs_20260331_164959\\matched_samples_timeseries.png",
+  "unused_adjacent_sample_visualization": "D:\\4.正泰新能-银浆单耗\\dynamic_strategy_flow_V1\\sample_delta_outputs_20260331_164959\\wet_weight_unused_adjacent_points.png",
+  "hierarchical_scene_visualizations": {
+    "coarse_scene_ranking": "D:\\4.正泰新能-银浆单耗\\dynamic_strategy_flow_V1\\sample_delta_outputs_20260331_164959\\hierarchical_coarse_scene_ranking.png",
+    "wet_weight_boxplot": "D:\\4.正泰新能-银浆单耗\\dynamic_strategy_flow_V1\\sample_delta_outputs_20260331_164959\\hierarchical_wet_weight_boxplot.png",
+    "scene_structure_tree_csv": "D:\\4.正泰新能-银浆单耗\\dynamic_strategy_flow_V1\\sample_delta_outputs_20260331_164959\\hierarchical_scene_structure_tree.csv",
+    "scene_structure_tree_png": "D:\\4.正泰新能-银浆单耗\\dynamic_strategy_flow_V1\\sample_delta_outputs_20260331_164959\\hierarchical_scene_structure_tree.png"
+  },
+  "coarse_scene_param_distributions": {
+    "boxplot_figure": "D:\\4.正泰新能-银浆单耗\\dynamic_strategy_flow_V1\\sample_delta_outputs_20260331_164959\\coarse_scene_param_boxplots.png",
+    "summary_csv": "D:\\4.正泰新能-银浆单耗\\dynamic_strategy_flow_V1\\sample_delta_outputs_20260331_164959\\coarse_scene_param_distribution_summary.csv"
+  },
+  "coarse_scene_split_points": {
+    "png": "D:\\4.正泰新能-银浆单耗\\dynamic_strategy_flow_V1\\sample_delta_outputs_20260331_164959\\coarse_scene_split_points.png",
+    "csv": "D:\\4.正泰新能-银浆单耗\\dynamic_strategy_flow_V1\\sample_delta_outputs_20260331_164959\\coarse_scene_split_points.csv"
+  },
+  "scene_model_coverage_diagnosis": "D:\\4.正泰新能-银浆单耗\\dynamic_strategy_flow_V1\\sample_delta_outputs_20260331_164959\\scene_model_coverage_diagnosis.csv",
+  "fixed_coarse_scene_structure_table": {
+    "csv": "D:\\4.正泰新能-银浆单耗\\dynamic_strategy_flow_V1\\sample_delta_outputs_20260331_164959\\fixed_coarse_scene_structure_table.csv",
+    "png": "D:\\4.正泰新能-银浆单耗\\dynamic_strategy_flow_V1\\sample_delta_outputs_20260331_164959\\fixed_coarse_scene_structure_table.png"
+  },
+  "decision_tree_scene_split": {
+    "enabled": true,
+    "feature_cols": [
+      "刮刀高度_上",
+      "刮刀高度_下",
+      "墨刀高度_上",
+      "墨刀高度_下"
+    ],
+    "max_leaf_nodes": 8,
+    "min_samples_leaf": 20,
+    "leaf_count": 8,
+    "leaf_summary_csv": "D:\\4.正泰新能-银浆单耗\\dynamic_strategy_flow_V1\\sample_delta_outputs_20260331_164959\\decision_tree_scene_leaf_summary.csv",
+    "assignment_csv": "D:\\4.正泰新能-银浆单耗\\dynamic_strategy_flow_V1\\sample_delta_outputs_20260331_164959\\decision_tree_scene_assignments.csv",
+    "rules_txt": "D:\\4.正泰新能-银浆单耗\\dynamic_strategy_flow_V1\\sample_delta_outputs_20260331_164959\\decision_tree_scene_rules.txt",
+    "tree_png": "D:\\4.正泰新能-银浆单耗\\dynamic_strategy_flow_V1\\sample_delta_outputs_20260331_164959\\decision_tree_scene_split.png",
+    "leaf_wet_weight_boxplot": "D:\\4.正泰新能-银浆单耗\\dynamic_strategy_flow_V1\\sample_delta_outputs_20260331_164959\\decision_tree_leaf_wet_weight_boxplot.png"
+  },
+  "decision_tree_scene_display": {
+    "boxplot_png": "D:\\4.正泰新能-银浆单耗\\dynamic_strategy_flow_V1\\sample_delta_outputs_20260331_164959\\decision_tree_scene_param_boxplots.png",
+    "csv": "D:\\4.正泰新能-银浆单耗\\dynamic_strategy_flow_V1\\sample_delta_outputs_20260331_164959\\decision_tree_scene_structure_table.csv",
+    "png": "D:\\4.正泰新能-银浆单耗\\dynamic_strategy_flow_V1\\sample_delta_outputs_20260331_164959\\decision_tree_scene_structure_table.png"
+  },
+  "single_param_visualizations": {
+    "direction_bar": "D:\\4.正泰新能-银浆单耗\\dynamic_strategy_flow_V1\\sample_delta_outputs_20260331_164959\\single_param_direction_bar.png"
+  },
+  "latest_adjustment_visualizations": {
+    "contribution_waterfall": "D:\\4.正泰新能-银浆单耗\\dynamic_strategy_flow_V1\\sample_delta_outputs_20260331_164959\\latest_adjustment_contribution_waterfall.png",
+    "adjustment_dashboard": "D:\\4.正泰新能-银浆单耗\\dynamic_strategy_flow_V1\\sample_delta_outputs_20260331_164959\\latest_adjustment_dashboard.png"
+  },
+  "backtest_last_10pct": {
+    "enabled": true,
+    "test_ratio": 0.1,
+    "total_samples": 1011,
+    "test_samples": 102,
+    "evaluated_steps": 101,
+    "actionable_steps": 101,
+    "recommendation_coverage": 1.0,
+    "direction_hit_rate": 0.43564356435643564,
+    "direction_hit_rate_noisy": 0.40594059405940597,
+    "avg_required_reduction": 0.566264919300271,
+    "avg_expected_reduction": 0.7698571271610779,
+    "avg_noisy_expected_reduction": 0.7089056500439597,
+    "avg_actual_next_reduction": -0.006930693069306924,
+    "avg_predicted_next_wet_weight": 28.319251783730007,
+    "avg_noisy_predicted_next_wet_weight": 28.380203260847125,
+    "avg_actual_next_wet_weight": 29.096039603960396,
+    "mean_abs_error": 0.952892370554493,
+    "mean_noisy_abs_error": 1.0436270999928432,
+    "wet_value_summary": {
+      "当前湿重": {
+        "mean": 29.089108910891085,
+        "var": 0.5595843544750513,
+        "sum": 2937.9999999999995
+      },
+      "带扰动预计下一步湿重": {
+        "mean": 28.380203260847125,
+        "var": 0.6343731559655774,
+        "sum": 2866.40052934556
+      },
+      "预计下一步湿重": {
+        "mean": 28.319251783730007,
+        "var": 0.37330699133284984,
+        "sum": 2860.2444301567307
+      },
+      "目标湿重": {
+        "mean": 28.64810958011033,
+        "var": 0.01445911253160595,
+        "sum": 2893.459067591143
+      }
+    },
+    "noise_scale": 1.0,
+    "noise_seed": 42,
+    "details_csv": "D:\\4.正泰新能-银浆单耗\\dynamic_strategy_flow_V1\\sample_delta_outputs_20260331_164959\\backtest_last_10pct_details.csv",
+    "visualizations": {
+      "timeline": "D:\\4.正泰新能-银浆单耗\\dynamic_strategy_flow_V1\\sample_delta_outputs_20260331_164959\\backtest_timeline.png",
+      "expected_vs_actual": "D:\\4.正泰新能-银浆单耗\\dynamic_strategy_flow_V1\\sample_delta_outputs_20260331_164959\\backtest_expected_vs_actual.png"
+    }
+  },
+  "latest_scene": "刮刀高度_上=30.300-30.400 | 刮刀高度_下=34.300-34.400 | 墨刀高度_上=32.300 | 墨刀高度_下=37.200 | life=网版寿命=269146-549027",
+  "latest_coarse_scene": "刮刀高度_上=30.300-30.400 | 刮刀高度_下=34.300-34.400 | 墨刀高度_上=32.300 | 墨刀高度_下=37.200"
+}

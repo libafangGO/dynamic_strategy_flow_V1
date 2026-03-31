@@ -96,6 +96,51 @@ def save_matched_samples_visualization(df: pd.DataFrame, output_dir: Path) -> Op
     return output_path
 
 
+def save_unused_adjacent_sample_visualization(matched_df: pd.DataFrame, deltas: pd.DataFrame, output_dir: Path) -> Optional[Path]:
+    if matched_df is None or matched_df.empty or "wet_time" not in matched_df.columns or "wet_weight" not in matched_df.columns:
+        return None
+
+    configure_plot_style()
+    plot_df = matched_df.copy()
+    plot_df["wet_time"] = pd.to_datetime(plot_df["wet_time"], errors="coerce")
+    plot_df["wet_weight"] = pd.to_numeric(plot_df["wet_weight"], errors="coerce")
+    plot_df = plot_df.dropna(subset=["wet_time", "wet_weight"]).sort_values("wet_time").reset_index(drop=True)
+    if plot_df.empty:
+        return None
+
+    used_cur = set()
+    if deltas is not None and (not deltas.empty) and ("t_cur" in deltas.columns):
+        used_cur = set(pd.to_datetime(deltas["t_cur"], errors="coerce").dropna())
+    plot_df["is_unused_as_cur"] = ~plot_df["wet_time"].isin(used_cur)
+
+    fig, ax = plt.subplots(figsize=(16, 6))
+    ax.plot(plot_df["wet_time"], plot_df["wet_weight"], color="#4e79a7", linewidth=1.2, alpha=0.9, label="全部 wet_weight")
+
+    unused_df = plot_df[plot_df["is_unused_as_cur"]].copy()
+    if not unused_df.empty:
+        ax.scatter(
+            unused_df["wet_time"],
+            unused_df["wet_weight"],
+            s=28,
+            color="#d62728",
+            alpha=0.9,
+            label=f"未进入相邻差分的样本点 ({len(unused_df)})",
+            zorder=3,
+        )
+
+    ax.set_title(f"wet_weight 折线图及未进入相邻差分的样本点（{len(unused_df)} 个）")
+    ax.set_xlabel("wet_time")
+    ax.set_ylabel("wet_weight")
+    ax.grid(True, linestyle="--", linewidth=0.5, alpha=0.3)
+    ax.legend(loc="best")
+    fig.autofmt_xdate(rotation=25)
+
+    output_path = output_dir / "wet_weight_unused_adjacent_points.png"
+    fig.savefig(output_path, dpi=180, bbox_inches="tight")
+    plt.close(fig)
+    return output_path
+
+
 def _truncate_label(text: str, limit: int = 42) -> str:
     text = str(text)
     return text if len(text) <= limit else text[: limit - 3] + "..."
@@ -160,24 +205,92 @@ def save_hierarchical_scene_visualizations(df: pd.DataFrame, output_dir: Path) -
     scene_tree_df.to_csv(scene_tree_csv_path, index=False, encoding="utf-8-sig")
     output_paths["scene_structure_tree_csv"] = str(scene_tree_csv_path)
 
-    table_show = scene_tree_df.head(20).copy()
-    table_show["scene_coarse_key"] = table_show["scene_coarse_key"].map(lambda x: _truncate_label(x, 34))
-    table_show["scene_fine_key"] = table_show["scene_fine_key"].map(lambda x: _truncate_label(x, 42))
+    coarse_feature_cols = [c for c in ["刮刀高度_上", "刮刀高度_下", "墨刀高度_上", "墨刀高度_下"] if c in scene_tree_df.columns]
+    if coarse_feature_cols:
+        table_show = scene_tree_df.copy()
+        for col in coarse_feature_cols:
+            vals = pd.to_numeric(table_show[col], errors="coerce")
+            table_show[col] = vals.map(lambda x: f"{x:.3f}" if pd.notna(x) else "NA")
+        table_show["life_segment"] = table_show["life_segment"].astype(str)
+        table_show["sample_count"] = table_show["sample_count"].astype(int).astype(str)
 
-    fig_h = max(5, 0.42 * len(table_show) + 1.8)
-    fig, ax = plt.subplots(figsize=(18, fig_h))
+        top_header = ["粗场景"] * len(coarse_feature_cols) + ["细场景", "细场景"]
+        second_header = coarse_feature_cols + ["网版寿命", "样本数"]
+        body_cols = coarse_feature_cols + ["life_segment", "sample_count"]
+        table_rows = [top_header, second_header] + table_show[body_cols].values.tolist()
+
+        fig_h = max(8, 0.62 * len(table_rows) + 1.8)
+        fig_w = max(18, 2.8 * len(body_cols) + 4)
+        fig, ax = plt.subplots(figsize=(fig_w, fig_h))
+        ax.axis("off")
+        table = ax.table(
+            cellText=table_rows,
+            loc="center",
+            cellLoc="left",
+            colLoc="left",
+            colWidths=[0.13] * len(coarse_feature_cols) + [0.22, 0.10],
+        )
+        table.auto_set_font_size(False)
+        table.set_fontsize(8.5)
+        table.scale(1, 1.8)
+
+        for (row, col), cell in table.get_celld().items():
+            if row == 0:
+                cell.set_facecolor("#d9eaf7")
+                cell.set_text_props(weight="bold", ha="center")
+            elif row == 1:
+                cell.set_facecolor("#edf4fb")
+                cell.set_text_props(weight="bold", ha="center")
+            else:
+                cell.set_text_props(ha="center", va="center")
+
+        ax.set_title(f"场景结构树状表（全量 {len(scene_tree_df)} 行）", pad=16)
+        table_png_path = output_dir / "hierarchical_scene_structure_tree.png"
+        fig.savefig(table_png_path, dpi=180, bbox_inches="tight")
+        plt.close(fig)
+        output_paths["scene_structure_tree_png"] = str(table_png_path)
+        return output_paths
+
+    table_show = scene_tree_df.copy()
+
+    def _format_scene_cell(text: str) -> str:
+        return str(text).replace(" | ", "\n")
+
+    table_show["scene_coarse_key"] = table_show["scene_coarse_key"].map(_format_scene_cell)
+    table_show["scene_fine_key"] = table_show["scene_fine_key"].map(_format_scene_cell)
+    table_show["life_segment"] = table_show["life_segment"].astype(str)
+    table_show["sample_count"] = table_show["sample_count"].astype(int).astype(str)
+
+    table_rows = [
+        ["粗场景", "粗场景", "细场景", "细场景"],
+        ["粗场景键", "寿命分段", "细场景键", "样本数"],
+    ] + table_show[["scene_coarse_key", "life_segment", "scene_fine_key", "sample_count"]].values.tolist()
+
+    fig_h = max(8, 0.78 * len(table_rows) + 1.8)
+    fig, ax = plt.subplots(figsize=(22, fig_h))
     ax.axis("off")
     table = ax.table(
-        cellText=table_show.values,
-        colLabels=["粗场景", "寿命分段", "细场景", "样本数"],
+        cellText=table_rows,
         loc="center",
         cellLoc="left",
         colLoc="left",
+        colWidths=[0.33, 0.12, 0.43, 0.12],
     )
     table.auto_set_font_size(False)
-    table.set_fontsize(9)
-    table.scale(1, 1.4)
-    ax.set_title("场景结构树状表（Top 20）", pad=16)
+    table.set_fontsize(8.5)
+    table.scale(1, 2.0)
+
+    for (row, col), cell in table.get_celld().items():
+        if row == 0:
+            cell.set_facecolor("#d9eaf7")
+            cell.set_text_props(weight="bold", ha="center")
+        elif row == 1:
+            cell.set_facecolor("#edf4fb")
+            cell.set_text_props(weight="bold", ha="center")
+        else:
+            cell.set_text_props(ha="left", va="center")
+
+    ax.set_title(f"场景结构树状表（全量 {len(scene_tree_df)} 行）", pad=16)
     table_png_path = output_dir / "hierarchical_scene_structure_tree.png"
     fig.savefig(table_png_path, dpi=180, bbox_inches="tight")
     plt.close(fig)
@@ -281,13 +394,14 @@ def run_scene_decision_tree(
     output_dir: Path,
     max_leaf_nodes: int,
     min_samples_leaf: int,
+    feature_cols: Optional[List[str]] = None,
 ) -> Dict:
     if df is None or df.empty or "wet_weight" not in df.columns:
         return {"enabled": False, "message": "缺少湿重数据，无法训练决策树"}
 
     configure_plot_style()
 
-    feature_candidates = ["刮刀高度_上", "刮刀高度_下", "墨刀高度_上", "墨刀高度_下", "网版寿命"]
+    feature_candidates = feature_cols if feature_cols is not None else ["刮刀高度_上", "刮刀高度_下", "墨刀高度_上", "墨刀高度_下"]
     feature_cols = [c for c in feature_candidates if c in df.columns]
     if not feature_cols:
         return {"enabled": False, "message": "缺少场景特征列，无法训练决策树"}
@@ -390,7 +504,7 @@ def run_scene_decision_tree(
 def save_coarse_scene_param_boxplots(
     df: pd.DataFrame,
     output_dir: Path,
-    max_scenes: int = 6,
+    max_scenes: Optional[int] = None,
 ) -> Dict[str, str]:
     if df is None or df.empty or "scene_coarse_key" not in df.columns:
         return {}
@@ -405,6 +519,8 @@ def save_coarse_scene_param_boxplots(
     if len(plot_cols) == 0:
         return {}
 
+    if max_scenes is None:
+        max_scenes = int(df["scene_coarse_key"].nunique())
     scene_counts = df["scene_coarse_key"].value_counts().head(max_scenes)
     ordered_scenes = scene_counts.index.tolist()
     scene_labels = [f"S{i}" for i in range(1, len(ordered_scenes) + 1)]
@@ -445,7 +561,7 @@ def save_coarse_scene_param_boxplots(
         ax.axis("off")
 
     scene_note = " | ".join([f"{scene_labels[i]}={_truncate_label(ordered_scenes[i], 24)}" for i in range(len(ordered_scenes))])
-    fig.suptitle(f"6种粗场景变量箱线图\n{scene_note}", fontsize=15)
+    fig.suptitle(f"{len(ordered_scenes)}种粗场景变量箱线图\n{scene_note}", fontsize=15)
     out_path = output_dir / "coarse_scene_param_boxplots.png"
     fig.savefig(out_path, dpi=180, bbox_inches="tight")
     plt.close(fig)
@@ -462,12 +578,14 @@ def save_coarse_scene_param_boxplots(
 def save_fixed_coarse_scene_structure_table(
     df: pd.DataFrame,
     output_dir: Path,
-    max_scenes: int = 6,
+    max_scenes: Optional[int] = None,
 ) -> Dict[str, str]:
     if df is None or df.empty or "scene_coarse_key" not in df.columns:
         return {}
 
     configure_plot_style()
+    if max_scenes is None:
+        max_scenes = int(df["scene_coarse_key"].nunique())
     scene_counts = (
         df.groupby("scene_coarse_key", dropna=False)
         .agg(
@@ -501,12 +619,103 @@ def save_fixed_coarse_scene_structure_table(
     table.auto_set_font_size(False)
     table.set_fontsize(9)
     table.scale(1, 1.45)
-    ax.set_title("固定规则 6 种粗场景结构树状表", pad=16)
+    ax.set_title(f"固定规则 {len(scene_counts)} 种粗场景结构树状表", pad=16)
     png_path = output_dir / "fixed_coarse_scene_structure_table.png"
     fig.savefig(png_path, dpi=180, bbox_inches="tight")
     plt.close(fig)
 
     return {"csv": str(csv_path), "png": str(png_path)}
+
+
+def _extract_tree_split_thresholds(model: DecisionTreeRegressor, feature_cols: List[str]) -> Dict[str, List[float]]:
+    thresholds: Dict[str, List[float]] = {c: [] for c in feature_cols}
+    tree = model.tree_
+    for feature_idx, threshold in zip(tree.feature, tree.threshold):
+        if feature_idx < 0:
+            continue
+        thresholds[feature_cols[int(feature_idx)]].append(float(threshold))
+    return {k: sorted(set(v)) for k, v in thresholds.items()}
+
+
+def _extract_fixed_split_thresholds(series: pd.Series, step: float) -> List[float]:
+    if step <= 0:
+        return []
+    values = pd.to_numeric(series, errors="coerce").dropna()
+    if values.empty:
+        return []
+    centers = np.sort(np.unique(np.round(values / step) * step))
+    if len(centers) <= 1:
+        return []
+    return [float((centers[i] + centers[i + 1]) / 2.0) for i in range(len(centers) - 1)]
+
+
+def save_coarse_scene_split_points_visualization(
+    df: pd.DataFrame,
+    output_dir: Path,
+    scene_config: Dict,
+) -> Dict[str, str]:
+    if df is None or df.empty or "wet_weight" not in df.columns:
+        return {}
+
+    coarse_cfg = scene_config.get("coarse_scene", {})
+    feature_cols = [c for c in coarse_cfg.get("features", []) if c in df.columns]
+    if not feature_cols:
+        return {}
+
+    configure_plot_style()
+    method = str(coarse_cfg.get("method", "fixed")).lower()
+    split_map: Dict[str, List[float]] = {c: [] for c in feature_cols}
+
+    if method == "tree":
+        train_df = df[feature_cols + ["wet_weight"]].copy()
+        for col in feature_cols + ["wet_weight"]:
+            train_df[col] = pd.to_numeric(train_df[col], errors="coerce")
+        train_df = train_df.dropna(subset=feature_cols + ["wet_weight"]).reset_index(drop=True)
+        if not train_df.empty:
+            model = DecisionTreeRegressor(
+                random_state=42,
+                max_leaf_nodes=int(coarse_cfg.get("tree", {}).get("max_leaf_nodes", 6)),
+                min_samples_leaf=int(coarse_cfg.get("tree", {}).get("min_samples_leaf", 20)),
+            )
+            model.fit(train_df[feature_cols], train_df["wet_weight"])
+            split_map = _extract_tree_split_thresholds(model, feature_cols)
+    else:
+        step = float(coarse_cfg.get("fixed_round_step", 0.5))
+        for col in feature_cols:
+            split_map[col] = _extract_fixed_split_thresholds(df[col], step)
+
+    fig, axes = plt.subplots(2, 2, figsize=(18, 11), constrained_layout=True)
+    axes = np.array(axes).reshape(-1)
+    summary_rows: List[Dict] = []
+
+    for ax, col in zip(axes, feature_cols[:4]):
+        values = pd.to_numeric(df[col], errors="coerce").dropna()
+        if values.empty:
+            ax.axis("off")
+            continue
+        ax.hist(values, bins=min(30, max(10, int(np.sqrt(len(values))))), color="#9ecae1", edgecolor="white", alpha=0.85)
+        for split in split_map.get(col, []):
+            ax.axvline(split, color="#d62728", linestyle="--", linewidth=1.4, alpha=0.9)
+            summary_rows.append({"param": col, "split_point": float(split), "method": method})
+        ax.set_title(f"{col} 原始分布与分割点")
+        ax.set_xlabel(col)
+        ax.set_ylabel("样本数")
+        ax.grid(axis="y", linestyle="--", linewidth=0.5, alpha=0.3)
+
+    for ax in axes[len(feature_cols[:4]):]:
+        ax.axis("off")
+
+    fig.suptitle(f"粗场景参数分割点可视化（{method}）", fontsize=15)
+    png_path = output_dir / "coarse_scene_split_points.png"
+    fig.savefig(png_path, dpi=180, bbox_inches="tight")
+    plt.close(fig)
+
+    output_paths = {"png": str(png_path)}
+    if summary_rows:
+        csv_path = output_dir / "coarse_scene_split_points.csv"
+        pd.DataFrame(summary_rows).to_csv(csv_path, index=False, encoding="utf-8-sig")
+        output_paths["csv"] = str(csv_path)
+    return output_paths
 
 
 def save_decision_tree_scene_boxplots_and_table(

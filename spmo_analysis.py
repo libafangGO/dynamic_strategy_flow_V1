@@ -231,6 +231,297 @@ def analyze_joint_param_effects(
     return pd.DataFrame(rows)
 
 
+def _clip_float(value: float, lower: float, upper: float) -> float:
+    return float(np.clip(float(value), float(lower), float(upper)))
+
+
+def _default_weight_detail(weight_source: str) -> Dict:
+    return {
+        "参数权重": 1.0,
+        "权重来源": weight_source,
+        "effect_score": 0.0,
+        "confidence_score": 1.0 if weight_source == "disabled" else 0.0,
+        "hit_score": 1.0 if weight_source == "disabled" else 0.75,
+        "room_score": 1.0,
+        "stability_score": 1.0,
+        "sample_score": 0.0,
+        "r2_score": 0.0,
+        "direction_consistency": 0.5,
+        "recent_hit_rate": 0.5,
+        "available_room": 0.0,
+        "vol_risk": 0.0,
+        "effective_sample_count": 0,
+        "raw_weight": 0.0,
+        "norm_weight": 1.0,
+    }
+
+
+def _build_weight_scope(
+    latest: pd.Series,
+    merged: pd.DataFrame,
+    deltas: pd.DataFrame,
+    min_scene_samples: int,
+) -> Dict:
+    latest_scene = latest.get("scene_fine_key")
+    latest_coarse_scene = latest.get("scene_coarse_key")
+
+    fine_scene_data = merged[merged.get("scene_fine_key") == latest_scene].copy() if "scene_fine_key" in merged.columns else pd.DataFrame()
+    fine_deltas = deltas[deltas.get("scene_key") == latest_scene].copy() if "scene_key" in deltas.columns else pd.DataFrame()
+    if len(fine_scene_data) >= max(2, min_scene_samples) and len(fine_deltas) >= min_scene_samples:
+        return {
+            "weight_source": "scene_fine_key",
+            "scene_data": fine_scene_data.sort_values("wet_time"),
+            "deltas": fine_deltas,
+        }
+
+    coarse_scene_data = merged[merged.get("scene_coarse_key") == latest_coarse_scene].copy() if "scene_coarse_key" in merged.columns else pd.DataFrame()
+    coarse_deltas = deltas[deltas.get("scene_coarse_key") == latest_coarse_scene].copy() if "scene_coarse_key" in deltas.columns else pd.DataFrame()
+    if len(coarse_scene_data) >= max(2, min_scene_samples) and len(coarse_deltas) >= min_scene_samples:
+        return {
+            "weight_source": "scene_coarse_key",
+            "scene_data": coarse_scene_data.sort_values("wet_time"),
+            "deltas": coarse_deltas,
+        }
+
+    return {
+        "weight_source": "global_default",
+        "scene_data": pd.DataFrame(),
+        "deltas": pd.DataFrame(),
+    }
+
+
+def build_dynamic_joint_weights(
+    latest: pd.Series,
+    merged: pd.DataFrame,
+    deltas: pd.DataFrame,
+    joint_row: pd.Series,
+    plan_items: List[Dict],
+    core_stable_tol: float,
+    joint_weight_config: Optional[Dict] = None,
+) -> Dict:
+    joint_cfg = joint_weight_config or DEFAULT_SCENE_CONFIG["joint_recommendation"]
+    dynamic_cfg = joint_cfg.get("dynamic_weight", {})
+    k = max(float(dynamic_cfg.get("k", 8.0)), 1e-6)
+    risk_lambda = max(float(dynamic_cfg.get("lambda", 0.8)), 0.0)
+    recent_window = max(int(dynamic_cfg.get("recent_window", 20)), 3)
+    min_scene_samples = max(int(dynamic_cfg.get("min_scene_samples", 8)), 3)
+    eps = max(float(dynamic_cfg.get("eps", 1e-6)), 1e-12)
+
+    scope_info = _build_weight_scope(
+        latest=latest,
+        merged=merged,
+        deltas=deltas,
+        min_scene_samples=min_scene_samples,
+    )
+    weight_source = scope_info["weight_source"]
+    scope_scene = scope_info["scene_data"]
+    scope_deltas = scope_info["deltas"]
+
+    if weight_source == "global_default":
+        return {
+            "weight_source": "global_default",
+            "weights": {param: _default_weight_detail("global_default") for param in CORE_PARAMS},
+        }
+
+    scope_deltas = scope_deltas.copy()
+    if "t_cur" in scope_deltas.columns:
+        scope_deltas["_t_cur_order"] = pd.to_datetime(scope_deltas["t_cur"], errors="coerce")
+        scope_deltas = scope_deltas.sort_values("_t_cur_order")
+
+    r2_score = float(joint_row.get("model_r2", np.nan))
+    r2_score = _clip_float(r2_score, 0.0, 1.0) if np.isfinite(r2_score) else 0.0
+
+    raw_weight_map: Dict[str, float] = {}
+    detail_map: Dict[str, Dict] = {}
+
+    for item in plan_items:
+        param = item["参数"]
+        coef = float(joint_row.get(f"coef_{param}", item.get("线性系数", 0.0)))
+        step = float(item.get("基础步长", 0.0))
+        action = item.get("建议方向", "保持")
+        cur_value = float(item.get("当前值", latest.get(param, np.nan)))
+        detail = _default_weight_detail(weight_source)
+
+        effect_score = abs(coef) * step if np.isfinite(coef) and np.isfinite(step) else 0.0
+        detail["effect_score"] = float(effect_score)
+
+        if action not in ["增大", "减小"] or step <= 0 or abs(coef) <= eps or f"delta_{param}" not in scope_deltas.columns:
+            raw_weight_map[param] = 0.0
+            detail["权重来源"] = weight_source
+            detail_map[param] = detail
+            continue
+
+        relevant = scope_deltas[pd.to_numeric(scope_deltas[f"delta_{param}"], errors="coerce").abs() > core_stable_tol].copy()
+        n_p = int(len(relevant))
+        sample_score = float(np.sqrt(n_p / (n_p + k))) if n_p > 0 else 0.0
+
+        if n_p > 0:
+            relevant["local_slope"] = pd.to_numeric(relevant["delta_wet"], errors="coerce") / (
+                pd.to_numeric(relevant[f"delta_{param}"], errors="coerce") + eps
+            )
+            local_slopes = pd.to_numeric(relevant["local_slope"], errors="coerce").replace([np.inf, -np.inf], np.nan).dropna()
+        else:
+            local_slopes = pd.Series(dtype=float)
+
+        if len(local_slopes):
+            slope_signs = np.sign(local_slopes.astype(float).values)
+            direction_consistency = float(np.mean(slope_signs == np.sign(coef)))
+        else:
+            direction_consistency = 0.5
+
+        confidence_score = float(sample_score * r2_score * direction_consistency)
+
+        recent = relevant.tail(recent_window).copy()
+        if len(recent):
+            predicted_sign = np.sign(coef * pd.to_numeric(recent[f"delta_{param}"], errors="coerce").astype(float).values)
+            actual_sign = np.sign(pd.to_numeric(recent["delta_wet"], errors="coerce").astype(float).values)
+            valid = predicted_sign != 0
+            recent_hit_rate = float(np.mean(predicted_sign[valid] == actual_sign[valid])) if np.any(valid) else 0.5
+        else:
+            recent_hit_rate = 0.5
+        hit_score = float(0.5 + 0.5 * recent_hit_rate)
+
+        hist_series = pd.to_numeric(scope_scene.get(param), errors="coerce").dropna() if param in scope_scene.columns else pd.Series(dtype=float)
+        if len(hist_series):
+            hist_min = float(hist_series.min())
+            hist_max = float(hist_series.max())
+            if action == "增大":
+                available_room = max(0.0, hist_max - cur_value)
+            else:
+                available_room = max(0.0, cur_value - hist_min)
+        else:
+            available_room = 0.0
+        room_score = _clip_float(available_room / (step + eps), 0.3, 1.2)
+
+        recent_slopes = local_slopes.tail(recent_window)
+        if len(recent_slopes) >= 2:
+            slope_mean = abs(float(recent_slopes.mean()))
+            vol_risk = float(recent_slopes.std(ddof=0) / (slope_mean + eps))
+        else:
+            vol_risk = 0.0
+        stability_score = float(1.0 / (1.0 + risk_lambda * vol_risk))
+
+        raw_weight = float(effect_score * confidence_score * hit_score * room_score * stability_score)
+
+        detail.update(
+            {
+                "参数权重": 1.0,
+                "权重来源": weight_source,
+                "confidence_score": confidence_score,
+                "hit_score": hit_score,
+                "room_score": room_score,
+                "stability_score": stability_score,
+                "sample_score": sample_score,
+                "r2_score": r2_score,
+                "direction_consistency": direction_consistency,
+                "recent_hit_rate": recent_hit_rate,
+                "available_room": float(available_room),
+                "vol_risk": vol_risk,
+                "effective_sample_count": n_p,
+                "raw_weight": raw_weight,
+            }
+        )
+        raw_weight_map[param] = raw_weight
+        detail_map[param] = detail
+
+    mean_raw = float(np.mean([raw_weight_map.get(param, 0.0) for param in CORE_PARAMS])) if CORE_PARAMS else 0.0
+    if mean_raw <= eps:
+        return {
+            "weight_source": "global_default",
+            "weights": {param: _default_weight_detail("global_default") for param in CORE_PARAMS},
+        }
+
+    for param in CORE_PARAMS:
+        raw_weight = float(raw_weight_map.get(param, 0.0))
+        norm_weight = raw_weight / mean_raw
+        final_weight = _clip_float(norm_weight, 0.6, 1.4)
+        detail_map.setdefault(param, _default_weight_detail(weight_source))
+        detail_map[param]["norm_weight"] = float(norm_weight)
+        detail_map[param]["参数权重"] = float(final_weight)
+
+    return {
+        "weight_source": weight_source,
+        "weights": detail_map,
+    }
+
+
+def compute_dual_target_wet(
+    scene_data: pd.DataFrame,
+    current_wet: float,
+    target_wet_config: Optional[Dict] = None,
+) -> Dict:
+    cfg = target_wet_config or DEFAULT_SCENE_CONFIG["target_wet_config"]
+    recent_window = max(int(cfg.get("recent_window", 80)), 1)
+    stable_quantile = _clip_float(float(cfg.get("stable_quantile", 0.35)), 0.0, 1.0)
+    trend_bottom_ratio = _clip_float(float(cfg.get("trend_bottom_ratio", 0.20)), 0.01, 0.50)
+    trend_push_down = max(float(cfg.get("trend_push_down", 0.02)), 0.0)
+    vol_low = max(float(cfg.get("vol_low", 0.15)), 0.0)
+    vol_high = max(float(cfg.get("vol_high", 0.50)), vol_low + 1e-9)
+    alpha_low = _clip_float(float(cfg.get("alpha_low", 0.30)), 0.0, 1.0)
+    alpha_high = _clip_float(float(cfg.get("alpha_high", 0.70)), alpha_low, 1.0)
+    min_recent_samples = max(int(cfg.get("min_recent_samples", 12)), 1)
+    floor_q = _clip_float(float(cfg.get("target_floor_quantile", 0.05)), 0.0, 1.0)
+    ceil_q = _clip_float(float(cfg.get("target_ceiling_quantile", 0.50)), floor_q, 1.0)
+    enabled_dual_target = bool(cfg.get("enabled_dual_target", True))
+
+    wet_series = pd.to_numeric(scene_data.get("wet_weight"), errors="coerce").dropna()
+    recent_wet = wet_series.tail(min(recent_window, len(wet_series))) if len(wet_series) else pd.Series(dtype=float)
+    recent_count = int(len(recent_wet))
+
+    if recent_count == 0:
+        return {
+            "stable_target": float(current_wet),
+            "trend_target": float(current_wet),
+            "final_target": float(current_wet),
+            "recent_vol": 0.0,
+            "alpha": 1.0,
+            "recent_count": 0,
+            "target_method": "fallback_current",
+        }
+
+    stable_target = float(recent_wet.quantile(stable_quantile))
+    lower_bound = float(recent_wet.quantile(floor_q))
+    upper_bound = float(recent_wet.quantile(ceil_q))
+
+    if (not enabled_dual_target) or recent_count < min_recent_samples:
+        final_target = _clip_float(stable_target, lower_bound, upper_bound)
+        return {
+            "stable_target": stable_target,
+            "trend_target": stable_target,
+            "final_target": float(final_target),
+            "recent_vol": float(recent_wet.std(ddof=0)) if recent_count >= 2 else 0.0,
+            "alpha": 1.0,
+            "recent_count": recent_count,
+            "target_method": "fallback_q35",
+        }
+
+    bottom_n = max(1, int(np.ceil(recent_count * trend_bottom_ratio)))
+    bottom_wet = recent_wet.nsmallest(bottom_n)
+    trend_target = float(bottom_wet.mean() - trend_push_down) if len(bottom_wet) else stable_target
+    recent_vol = float(recent_wet.std(ddof=0)) if recent_count >= 2 else 0.0
+
+    if recent_vol >= vol_high:
+        alpha = alpha_high
+    elif recent_vol <= vol_low:
+        alpha = alpha_low
+    else:
+        interp = (recent_vol - vol_low) / (vol_high - vol_low)
+        alpha = float(alpha_low + interp * (alpha_high - alpha_low))
+
+    final_target = float(alpha * stable_target + (1.0 - alpha) * trend_target)
+    final_target = _clip_float(final_target, lower_bound, upper_bound)
+
+    return {
+        "stable_target": stable_target,
+        "trend_target": trend_target,
+        "final_target": float(final_target),
+        "recent_vol": recent_vol,
+        "alpha": float(alpha),
+        "recent_count": recent_count,
+        "target_method": "dual_target",
+    }
+
+
 def latest_scene_adjustment(
     merged: pd.DataFrame,
     effect_df: pd.DataFrame,
@@ -238,6 +529,7 @@ def latest_scene_adjustment(
     deltas: pd.DataFrame,
     core_stable_tol: float,
     joint_weight_config: Optional[Dict] = None,
+    target_wet_config: Optional[Dict] = None,
 ) -> Dict:
     latest_idx = merged["wet_time"].idxmax()
     latest = merged.loc[latest_idx]
@@ -251,13 +543,17 @@ def latest_scene_adjustment(
     if len(scene_data) == 0:
         scene_data = merged.sort_values("wet_time")
 
-    recent = scene_data.tail(min(80, len(scene_data)))
     current_wet = float(latest["wet_weight"])
-    target_wet = float(recent["wet_weight"].quantile(0.35))
+    target_info = compute_dual_target_wet(
+        scene_data=scene_data,
+        current_wet=current_wet,
+        target_wet_config=target_wet_config,
+    )
+    target_wet = float(target_info["final_target"])
     need_reduce = max(0.0, current_wet - target_wet)
     joint_weight_config = joint_weight_config or DEFAULT_SCENE_CONFIG["joint_recommendation"]
     use_weighted_scale = bool(joint_weight_config.get("use_weighted_scale", False))
-    joint_weights = joint_weight_config.get("weights", {})
+    configured_joint_weights = joint_weight_config.get("weights", {})
 
     # ------- single-parameter recommendations (reference) -------
     recs = []
@@ -383,12 +679,35 @@ def latest_scene_adjustment(
             if total_one_round_reduce > 1e-12 and need_reduce > 0:
                 scale = min(2.0, max(0.5, need_reduce / total_one_round_reduce))
 
+            if use_weighted_scale:
+                dynamic_weight_result = build_dynamic_joint_weights(
+                    latest=latest,
+                    merged=merged,
+                    deltas=deltas,
+                    joint_row=row,
+                    plan_items=plan_items,
+                    core_stable_tol=core_stable_tol,
+                    joint_weight_config=joint_weight_config,
+                )
+            else:
+                dynamic_weight_result = {
+                    "weight_source": "disabled",
+                    "weights": {param: _default_weight_detail("disabled") for param in CORE_PARAMS},
+                }
+
             expected_total = 0.0
             for item in plan_items:
-                weight = float(joint_weights.get(item["参数"], 1.0)) if use_weighted_scale else 1.0
+                weight_detail = dynamic_weight_result["weights"].get(item["参数"], _default_weight_detail("disabled" if not use_weighted_scale else "global_default"))
+                weight = float(weight_detail.get("参数权重", 1.0)) if use_weighted_scale else 1.0
                 # Keep the existing scale_factor logic unchanged; only add a per-parameter weight on top.
                 weighted_delta = item["基础步长"] * scale * weight if item["建议方向"] in ["增大", "减小"] else 0.0
                 item["参数权重"] = float(weight)
+                item["权重来源"] = weight_detail.get("权重来源", "disabled" if not use_weighted_scale else "global_default")
+                item["effect_score"] = float(weight_detail.get("effect_score", 0.0))
+                item["confidence_score"] = float(weight_detail.get("confidence_score", 1.0 if not use_weighted_scale else 0.0))
+                item["hit_score"] = float(weight_detail.get("hit_score", 1.0 if not use_weighted_scale else 0.75))
+                item["room_score"] = float(weight_detail.get("room_score", 1.0))
+                item["stability_score"] = float(weight_detail.get("stability_score", 1.0))
                 item["加权后建议变化量"] = float(weighted_delta)
                 item["加权后建议新值"] = (
                     float(item["当前值"] + weighted_delta)
@@ -409,7 +728,13 @@ def latest_scene_adjustment(
                 "required_reduction": need_reduce,
                 "scale_factor": float(scale),
                 "use_weighted_scale": use_weighted_scale,
-                "joint_weights": {p: float(joint_weights.get(p, 1.0)) for p in CORE_PARAMS},
+                "weight_mode": "dynamic" if use_weighted_scale else "uniform",
+                "weight_source": dynamic_weight_result.get("weight_source", "disabled" if not use_weighted_scale else "global_default"),
+                "configured_joint_weights": {p: float(configured_joint_weights.get(p, 1.0)) for p in CORE_PARAMS},
+                "joint_weights": {
+                    p: float(dynamic_weight_result["weights"].get(p, {}).get("参数权重", 1.0)) if use_weighted_scale else 1.0
+                    for p in CORE_PARAMS
+                },
                 "预计总降幅(线性近似)": float(expected_total),
                 "组合调参": plan_items,
             }
@@ -420,6 +745,13 @@ def latest_scene_adjustment(
         "latest_coarse_scene": latest_coarse_scene,
         "current_wet_weight": current_wet,
         "target_wet_weight": target_wet,
+        "target_wet_stable": float(target_info["stable_target"]),
+        "target_wet_trend": float(target_info["trend_target"]),
+        "target_wet_final": float(target_info["final_target"]),
+        "target_alpha": float(target_info["alpha"]),
+        "target_recent_vol": float(target_info["recent_vol"]),
+        "target_recent_count": int(target_info["recent_count"]),
+        "target_method": target_info["target_method"],
         "required_reduction": need_reduce,
         "joint_recommendation": joint_recommendation,
         "recommendations": recs,

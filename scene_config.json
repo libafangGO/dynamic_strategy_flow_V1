@@ -16,7 +16,7 @@
   "life_segment": {
     "enabled": true,
     "feature": "网版寿命",
-    "method": "fixed",
+    "method": "tree",
     "fixed_bin_size": 100000,
     "tree": {
       "max_leaf_nodes": 4,
@@ -29,6 +29,27 @@
       "印刷压力": 1.0,
       "印刷高度偏移": 1.0,
       "刮刀高度偏移": 1.0
+    },
+    "dynamic_weight": {
+      "k": 4.0,
+      "lambda": 0.4,
+      "recent_window": 20,
+      "min_scene_samples": 8,
+      "eps": 1e-6
     }
+  },
+  "target_wet_config": {
+    "enabled_dual_target": true,
+    "recent_window": 80,
+    "stable_quantile": 0.25,
+    "trend_bottom_ratio": 0.2,
+    "trend_push_down": 0.08,
+    "vol_low": 0.15,
+    "vol_high": 0.5,
+    "alpha_low": 0.2,
+    "alpha_high": 0.55,
+    "min_recent_samples": 12,
+    "target_floor_quantile": 0.05,
+    "target_ceiling_quantile": 0.5
   }
 }
