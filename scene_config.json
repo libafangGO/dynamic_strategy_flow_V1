@@ -1,0 +1,34 @@
+{
+  "coarse_scene": {
+    "features": [
+      "刮刀高度_上",
+      "刮刀高度_下",
+      "墨刀高度_上",
+      "墨刀高度_下"
+    ],
+    "method": "tree",
+    "fixed_round_step": 0.5,
+    "tree": {
+      "max_leaf_nodes": 10,
+      "min_samples_leaf": 20
+    }
+  },
+  "life_segment": {
+    "enabled": true,
+    "feature": "网版寿命",
+    "method": "fixed",
+    "fixed_bin_size": 100000,
+    "tree": {
+      "max_leaf_nodes": 4,
+      "min_samples_leaf": 20
+    }
+  },
+  "joint_recommendation": {
+    "use_weighted_scale": true,
+    "weights": {
+      "印刷压力": 1.0,
+      "印刷高度偏移": 1.0,
+      "刮刀高度偏移": 1.0
+    }
+  }
+}
