@@ -1476,6 +1476,7 @@ def save_backtest_visualizations(backtest_df: pd.DataFrame, output_dir: Path) ->
 
     plot_df = backtest_df.copy()
     x = pd.to_datetime(plot_df["current_time"], errors="coerce")
+    x_next = pd.to_datetime(plot_df["next_time"], errors="coerce")
     current_wet = pd.to_numeric(plot_df["current_wet_weight"], errors="coerce")
     target_wet = pd.to_numeric(plot_df["target_wet_weight"], errors="coerce")
     actual_next_wet = pd.to_numeric(plot_df["next_wet_weight"], errors="coerce")
@@ -1504,16 +1505,70 @@ def save_backtest_visualizations(backtest_df: pd.DataFrame, output_dir: Path) ->
                 linewidth=1.3,
                 linestyle=":",
             )
-        ax.set_title("最后10%样本回测时间序列（湿重值）")
+        if actual_next_wet.notna().any():
+            valid_actual_next = x.notna() & actual_next_wet.notna()
+            ax.plot(
+                x[valid_actual_next],
+                actual_next_wet[valid_actual_next],
+                label="真实下一步湿重(挂在当前决策时点)",
+                color="#4e79a7",
+                linewidth=1.2,
+                alpha=0.75,
+            )
+        ax.set_title("回测时间序列图A：统一挂在当前决策时点n")
         ax.set_xlabel("时间")
         ax.set_ylabel("湿重值")
         ax.grid(True, linestyle="--", linewidth=0.5, alpha=0.3)
         ax.legend()
         fig.autofmt_xdate(rotation=25)
-        path = output_dir / "backtest_timeline.png"
+        path = output_dir / "backtest_timeline_current_anchor.png"
         fig.savefig(path, dpi=180, bbox_inches="tight")
         plt.close(fig)
-        output_paths["timeline"] = str(path)
+        output_paths["timeline_current_anchor"] = str(path)
+
+    valid_next = x_next.notna()
+    if valid_next.any():
+        fig, ax = plt.subplots(figsize=(12, 5.2))
+        if predicted_next_wet.notna().any():
+            valid_pred_next = x_next.notna() & predicted_next_wet.notna()
+            ax.plot(
+                x_next[valid_pred_next],
+                predicted_next_wet[valid_pred_next],
+                label="预测下一步湿重(落在n+1)",
+                color="#e15759",
+                linewidth=1.5,
+                linestyle="--",
+            )
+        if noisy_predicted_next_wet.notna().any():
+            valid_noisy_next = x_next.notna() & noisy_predicted_next_wet.notna()
+            ax.plot(
+                x_next[valid_noisy_next],
+                noisy_predicted_next_wet[valid_noisy_next],
+                label="带扰动预测下一步湿重(落在n+1)",
+                color="#59a14f",
+                linewidth=1.3,
+                linestyle=":",
+            )
+        if actual_next_wet.notna().any():
+            valid_actual_next = x_next.notna() & actual_next_wet.notna()
+            ax.plot(
+                x_next[valid_actual_next],
+                actual_next_wet[valid_actual_next],
+                label="真实下一步湿重(落在n+1)",
+                color="#4e79a7",
+                linewidth=1.35,
+                alpha=0.9,
+            )
+        ax.set_title("回测时间序列图B：预测与真实统一落在n+1")
+        ax.set_xlabel("时间")
+        ax.set_ylabel("湿重值")
+        ax.grid(True, linestyle="--", linewidth=0.5, alpha=0.3)
+        ax.legend()
+        fig.autofmt_xdate(rotation=25)
+        path = output_dir / "backtest_timeline_next_anchor.png"
+        fig.savefig(path, dpi=180, bbox_inches="tight")
+        plt.close(fig)
+        output_paths["timeline_next_anchor"] = str(path)
 
     valid = predicted_next_wet.notna() & actual_next_wet.notna()
     if valid.any():

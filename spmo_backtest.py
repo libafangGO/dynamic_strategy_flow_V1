@@ -238,6 +238,10 @@ def run_backtest(
         "wet_value_summary": wet_value_summary,
         "noise_scale": noise_scale,
         "noise_seed": noise_seed,
+        "timeline_explanations": {
+            "current_anchor": "图A统一使用当前决策时点 n 作为横轴。current_wet_weight 和 target_wet_weight属于 n 时刻信息，predicted_next_wet_weight、noisy_predicted_next_wet_weight 与 next_wet_weight 都是 n->n+1 的结果，但为了对照决策背景，挂在 n 时刻展示。",
+            "next_anchor": "图B统一使用 next_time 作为横轴。predicted_next_wet_weight、noisy_predicted_next_wet_weight 与 next_wet_weight 都落在 n+1 时刻，适合直接比较预测与真实是否一致。",
+        },
         "details_csv": str(backtest_csv),
         "visualizations": backtest_vis_paths,
     }

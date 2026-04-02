@@ -1,0 +1,54 @@
+{
+  "enabled": true,
+  "test_ratio": 0.1,
+  "total_samples": 1011,
+  "test_samples": 102,
+  "evaluated_steps": 101,
+  "actionable_steps": 101,
+  "recommendation_coverage": 1.0,
+  "direction_hit_rate": 0.43564356435643564,
+  "direction_hit_rate_noisy": 0.39603960396039606,
+  "avg_required_reduction": 0.44458246377455884,
+  "avg_expected_reduction": 1.3013189441277904,
+  "avg_noisy_expected_reduction": 1.2265491090132548,
+  "avg_actual_next_reduction": -0.006930693069306924,
+  "avg_predicted_next_wet_weight": 27.7877899667633,
+  "avg_noisy_predicted_next_wet_weight": 27.86255980187784,
+  "avg_actual_next_wet_weight": 29.096039603960396,
+  "mean_abs_error": 1.436386431393161,
+  "mean_noisy_abs_error": 1.4715100996435773,
+  "wet_value_summary": {
+    "当前湿重": {
+      "mean": 29.089108910891085,
+      "var": 0.5595843544750513,
+      "sum": 2937.9999999999995
+    },
+    "带扰动预计下一步湿重": {
+      "mean": 27.86255980187784,
+      "var": 1.2646312289845254,
+      "sum": 2814.1185399896617
+    },
+    "预计下一步湿重": {
+      "mean": 27.7877899667633,
+      "var": 1.0450526544454353,
+      "sum": 2806.566786643093
+    },
+    "目标湿重": {
+      "mean": 28.782661524910022,
+      "var": 0.11594344291168582,
+      "sum": 2907.0488140159123
+    }
+  },
+  "noise_scale": 1.0,
+  "noise_seed": 42,
+  "timeline_explanations": {
+    "current_anchor": "图A统一使用当前决策时点 n 作为横轴。current_wet_weight 和 target_wet_weight属于 n 时刻信息，predicted_next_wet_weight、noisy_predicted_next_wet_weight 与 next_wet_weight 都是 n->n+1 的结果，但为了对照决策背景，挂在 n 时刻展示。",
+    "next_anchor": "图B统一使用 next_time 作为横轴。predicted_next_wet_weight、noisy_predicted_next_wet_weight 与 next_wet_weight 都落在 n+1 时刻，适合直接比较预测与真实是否一致。"
+  },
+  "details_csv": "D:\\4.正泰新能-银浆单耗\\dynamic_strategy_flow_V1\\sample_delta_outputs_20260402_131125\\backtest_last_10pct_details.csv",
+  "visualizations": {
+    "timeline_current_anchor": "D:\\4.正泰新能-银浆单耗\\dynamic_strategy_flow_V1\\sample_delta_outputs_20260402_131125\\backtest_timeline_current_anchor.png",
+    "timeline_next_anchor": "D:\\4.正泰新能-银浆单耗\\dynamic_strategy_flow_V1\\sample_delta_outputs_20260402_131125\\backtest_timeline_next_anchor.png",
+    "expected_vs_actual": "D:\\4.正泰新能-银浆单耗\\dynamic_strategy_flow_V1\\sample_delta_outputs_20260402_131125\\backtest_expected_vs_actual.png"
+  }
+}
