@@ -6,7 +6,7 @@
       "墨刀高度_上",
       "墨刀高度_下"
     ],
-    "method": "tree",
+    "method": "fixed",
     "fixed_round_step": 0.5,
     "tree": {
       "max_leaf_nodes": 10,
@@ -16,7 +16,7 @@
   "life_segment": {
     "enabled": true,
     "feature": "网版寿命",
-    "method": "tree",
+    "method": "fixed",
     "fixed_bin_size": 100000,
     "tree": {
       "max_leaf_nodes": 4,

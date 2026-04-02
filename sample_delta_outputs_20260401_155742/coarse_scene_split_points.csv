@@ -1,0 +1,9 @@
+﻿param,split_point,method
+刮刀高度_上,31.0,fixed
+刮刀高度_上,31.75,fixed
+刮刀高度_上,32.5,fixed
+刮刀高度_下,34.75,fixed
+刮刀高度_下,35.25,fixed
+刮刀高度_下,35.75,fixed
+刮刀高度_下,36.5,fixed
+墨刀高度_上,32.25,fixed

@@ -44,7 +44,7 @@ DEFAULT_SCENE_CONFIG = {
         "enabled": True,
         "feature": "网版寿命",
         "method": "fixed",
-        "fixed_bin_size": 200000,
+        "fixed_bin_size": 100000,
         "tree": {
             "max_leaf_nodes": 4,
             "min_samples_leaf": 20,

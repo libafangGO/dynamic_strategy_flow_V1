@@ -20,6 +20,7 @@ from spmo_visualizations import (
     save_decision_tree_scene_boxplots_and_table,
     save_fixed_coarse_scene_structure_table,
     save_hierarchical_scene_visualizations,
+    save_life_segment_wet_weight_distribution,
     save_latest_adjustment_visualizations,
     save_matched_samples_visualization,
     save_single_param_visualizations,
@@ -52,6 +53,7 @@ def run_original_strategy(
     output_dir.mkdir(parents=True, exist_ok=True)
     match_vis_path = save_matched_samples_visualization(merged, output_dir)
     hierarchical_vis_paths = save_hierarchical_scene_visualizations(merged, output_dir)
+    life_segment_wet_weight_paths = save_life_segment_wet_weight_distribution(merged, output_dir)
     coarse_scene_distribution_paths = save_coarse_scene_param_boxplots(
         merged,
         output_dir,
@@ -141,6 +143,7 @@ def run_original_strategy(
         "matched_samples_visualization": str(match_vis_path) if match_vis_path is not None else None,
         "unused_adjacent_sample_visualization": str(unused_adjacent_sample_vis) if unused_adjacent_sample_vis is not None else None,
         "hierarchical_scene_visualizations": hierarchical_vis_paths,
+        "life_segment_wet_weight_distributions": life_segment_wet_weight_paths,
         "coarse_scene_param_distributions": coarse_scene_distribution_paths,
         "coarse_scene_split_points": coarse_scene_split_point_paths,
         "scene_model_coverage_diagnosis": str(scene_diag_path),

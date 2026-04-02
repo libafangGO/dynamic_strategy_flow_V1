@@ -718,6 +718,61 @@ def save_coarse_scene_split_points_visualization(
     return output_paths
 
 
+def save_life_segment_wet_weight_distribution(df: pd.DataFrame, output_dir: Path) -> Dict[str, str]:
+    if df.empty or "life_segment" not in df.columns or "wet_weight" not in df.columns:
+        return {}
+
+    configure_plot_style()
+    output_paths: Dict[str, str] = {}
+    plot_df = df.copy()
+    plot_df["wet_weight"] = pd.to_numeric(plot_df["wet_weight"], errors="coerce")
+    plot_df = plot_df[plot_df["wet_weight"].notna()].copy()
+    if plot_df.empty:
+        return {}
+
+    segment_stats = (
+        plot_df.groupby("life_segment", dropna=False)
+        .agg(
+            sample_count=("wet_weight", "size"),
+            wet_mean=("wet_weight", "mean"),
+            wet_std=("wet_weight", "std"),
+            wet_min=("wet_weight", "min"),
+            wet_q25=("wet_weight", lambda s: s.quantile(0.25)),
+            wet_median=("wet_weight", "median"),
+            wet_q75=("wet_weight", lambda s: s.quantile(0.75)),
+            wet_max=("wet_weight", "max"),
+        )
+        .reset_index()
+    )
+    segment_stats["life_segment"] = segment_stats["life_segment"].astype(str)
+    segment_stats = segment_stats.sort_values("life_segment").reset_index(drop=True)
+
+    grouped = [
+        plot_df.loc[plot_df["life_segment"].astype(str) == seg, "wet_weight"].values
+        for seg in segment_stats["life_segment"].tolist()
+    ]
+    labels = [_truncate_label(seg, 24) for seg in segment_stats["life_segment"].tolist()]
+
+    fig, ax = plt.subplots(figsize=(max(10, 1.1 * len(labels) + 4), 6.5))
+    bp = ax.boxplot(grouped, tick_labels=labels, patch_artist=True, showfliers=True)
+    for patch in bp["boxes"]:
+        patch.set(facecolor="#edc948", alpha=0.75)
+    ax.set_title("不同网版寿命区间湿重分布箱线图")
+    ax.set_xlabel("网版寿命区间")
+    ax.set_ylabel("湿重")
+    ax.grid(axis="y", linestyle="--", linewidth=0.5, alpha=0.35)
+    plt.setp(ax.get_xticklabels(), rotation=25, ha="right")
+    boxplot_path = output_dir / "life_segment_wet_weight_boxplot.png"
+    fig.savefig(boxplot_path, dpi=180, bbox_inches="tight")
+    plt.close(fig)
+    output_paths["life_segment_wet_weight_boxplot"] = str(boxplot_path)
+
+    summary_csv = output_dir / "life_segment_wet_weight_summary.csv"
+    segment_stats.to_csv(summary_csv, index=False, encoding="utf-8-sig")
+    output_paths["life_segment_wet_weight_summary"] = str(summary_csv)
+    return output_paths
+
+
 def save_decision_tree_scene_boxplots_and_table(
     df: pd.DataFrame,
     output_dir: Path,

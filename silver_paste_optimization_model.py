@@ -27,7 +27,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--min-samples-joint", type=int, default=12, help="每细场景最少联动样本数")
     parser.add_argument("--context-tol", type=float, default=1e-6, help="其他参数是否变化阈值")
     parser.add_argument("--coarse-round-step", type=float, default=0.5, help="刮刀/墨刀高度粗分步长")
-    parser.add_argument("--life-bin-size", type=float, default=200000, help="网版寿命固定分箱宽度")
+    parser.add_argument("--life-bin-size", type=float, default=100000, help="网版寿命固定分箱宽度")
     parser.add_argument("--core-stable-tol", type=float, default=0.1, help="核心参数近似不变阈值")
     parser.add_argument("--backtest-ratio", type=float, default=0.1, help="按时间顺序用于回测的最后样本占比")
     parser.add_argument("--backtest-noise-scale", type=float, default=1.0, help="回测扰动强度倍数，基于历史波动标准差")
